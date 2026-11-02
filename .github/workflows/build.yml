@@ -467,6 +467,7 @@ jobs:
           EOF
       - name: Build with Gradle
         run: |
+          gradle wrapper --gradle-version 8.7
           chmod +x gradlew || true
           ./gradlew assembleDebug
       - name: Upload APK Artifact
