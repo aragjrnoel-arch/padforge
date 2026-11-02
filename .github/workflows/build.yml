@@ -1,0 +1,519 @@
+name: build-apk
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+permissions:
+  contents: read
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.7'
+      - name: Project files
+        run: |
+          mkdir -p app/src/main/java/ai/padforge app/src/main/assets app/src/main/res/xml
+          cat > settings.gradle.kts <<'EOF'
+          pluginManagement { repositories { google(); mavenCentral(); gradlePluginPortal() } }
+          dependencyResolutionManagement { repositories { google(); mavenCentral() } }
+          rootProject.name = "PadForge"
+          include(":app")
+          EOF
+          cat > build.gradle.kts <<'EOF'
+          plugins {
+              id("com.android.application") version "8.5.2" apply false
+              id("org.jetbrains.kotlin.android") version "1.9.24" apply false
+          }
+          EOF
+          cat > gradle.properties <<'EOF'
+          android.useAndroidX=true
+          org.gradle.jvmargs=-Xmx2048m
+          EOF
+          cat > app/build.gradle.kts <<'EOF'
+          plugins { id("com.android.application"); id("org.jetbrains.kotlin.android") }
+          android {
+              namespace = "ai.padforge"
+              compileSdk = 34
+              defaultConfig { applicationId = "ai.padforge"; minSdk = 26; targetSdk = 34; versionCode = 1; versionName = "1.0" }
+              compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
+              kotlinOptions { jvmTarget = "17" }
+          }
+          EOF
+          cat > app/src/main/AndroidManifest.xml <<'EOF'
+          <?xml version="1.0" encoding="utf-8"?>
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+          <uses-permission android:name="android.permission.INTERNET"/>
+          <uses-permission android:name="android.permission.ACCESS_WIFI_STATE"/>
+          <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
+          <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+          <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE"/>
+          <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+          <uses-permission android:name="android.permission.WAKE_LOCK"/>
+          <uses-permission android:name="android.permission.NEARBY_WIFI_DEVICES" android:usesPermissionFlags="neverForLocation"/>
+          <application android:label="PadForge" android:theme="@android:style/Theme.Material.NoActionBar">
+          <activity android:name=".MainActivity" android:exported="true">
+          <intent-filter>
+          <action android:name="android.intent.action.MAIN"/>
+          <category android:name="android.intent.category.LAUNCHER"/>
+          </intent-filter>
+          </activity>
+          <activity android:name=".HostActivity" android:exported="false"/>
+          <activity android:name=".ControllerActivity" android:exported="false" android:screenOrientation="sensorLandscape" android:configChanges="orientation|screenSize|keyboardHidden"/>
+          <service android:name=".PadServerService" android:exported="false" android:foregroundServiceType="connectedDevice"/>
+          <service android:name=".InjectService" android:exported="true" android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+          <intent-filter>
+          <action android:name="android.accessibilityservice.AccessibilityService"/>
+          </intent-filter>
+          <meta-data android:name="android.accessibilityservice" android:resource="@xml/a11y"/>
+          </service>
+          </application>
+          </manifest>
+          EOF
+          cat > app/src/main/res/xml/a11y.xml <<'EOF'
+          <?xml version="1.0" encoding="utf-8"?>
+          <accessibility-service xmlns:android="http://schemas.android.com/apk/res/android" android:accessibilityEventTypes="typeWindowStateChanged" android:accessibilityFeedbackType="feedbackGeneric" android:canPerformGestures="true" android:canRetrieveWindowContent="false" android:description="PadForge touch injection"/>
+          EOF
+          cat > app/src/main/assets/layouts.json <<'EOF'
+          {"psp":{"name":"PSP","controls":[{"t":"btn","l":"L","x":0.04,"y":0.04,"w":0.13,"h":0.08},{"t":"btn","l":"R","x":0.83,"y":0.04,"w":0.13,"h":0.08},{"t":"btn","l":"Start","x":0.50,"y":0.05,"w":0.08,"h":0.08},{"t":"dpad","l":"","x":0.04,"y":0.30,"w":0.19,"h":0.30},{"t":"stick","l":"","x":0.24,"y":0.60,"w":0.14,"h":0.22},{"t":"face","l":"A","x":0.78,"y":0.12,"w":0.09,"h":0.14},{"t":"face","l":"B","x":0.68,"y":0.23,"w":0.09,"h":0.14},{"t":"face","l":"C","x":0.88,"y":0.23,"w":0.09,"h":0.14},{"t":"face","l":"D","x":0.78,"y":0.34,"w":0.09,"h":0.14}]},"xbox":{"name":"Xbox","controls":[{"t":"dpad","l":"","x":0.05,"y":0.30,"w":0.18,"h":0.30},{"t":"stick","l":"","x":0.28,"y":0.62,"w":0.16,"h":0.26},{"t":"stick","l":"","x":0.52,"y":0.62,"w":0.16,"h":0.26},{"t":"face","l":"Y","x":0.78,"y":0.10,"w":0.09,"h":0.14},{"t":"face","l":"X","x":0.68,"y":0.21,"w":0.09,"h":0.14},{"t":"face","l":"B","x":0.88,"y":0.21,"w":0.09,"h":0.14},{"t":"face","l":"A","x":0.78,"y":0.32,"w":0.09,"h":0.14}]},"snes":{"name":"SNES","controls":[{"t":"btn","l":"L","x":0.06,"y":0.05,"w":0.14,"h":0.08},{"t":"btn","l":"R","x":0.80,"y":0.05,"w":0.14,"h":0.08},{"t":"dpad","l":"","x":0.08,"y":0.30,"w":0.20,"h":0.32},{"t":"face","l":"X","x":0.78,"y":0.12,"w":0.09,"h":0.14},{"t":"face","l":"Y","x":0.69,"y":0.23,"w":0.09,"h":0.14},{"t":"face","l":"A","x":0.87,"y":0.23,"w":0.09,"h":0.14},{"t":"face","l":"B","x":0.78,"y":0.34,"w":0.09,"h":0.14}]},"fps":{"name":"FPS","controls":[{"t":"stick","l":"","x":0.07,"y":0.60,"w":0.21,"h":0.32},{"t":"stick","l":"","x":0.58,"y":0.52,"w":0.21,"h":0.32},{"t":"face","l":"FIRE","x":0.83,"y":0.70,"w":0.15,"h":0.20},{"t":"face","l":"AIM","x":0.83,"y":0.46,"w":0.15,"h":0.15},{"t":"btn","l":"JMP","x":0.66,"y":0.34,"w":0.13,"h":0.13},{"t":"btn","l":"RLD","x":0.50,"y":0.66,"w":0.13,"h":0.13}]},"mame":{"name":"Arcade","controls":[{"t":"btn","l":"Coin","x":0.26,"y":0.05,"w":0.09,"h":0.08},{"t":"btn","l":"Start","x":0.38,"y":0.05,"w":0.09,"h":0.08},{"t":"stick","l":"","x":0.08,"y":0.58,"w":0.20,"h":0.32},{"t":"face","l":"A","x":0.55,"y":0.18,"w":0.10,"h":0.15},{"t":"face","l":"B","x":0.66,"y":0.18,"w":0.10,"h":0.15},{"t":"face","l":"C","x":0.77,"y":0.18,"w":0.10,"h":0.15},{"t":"face","l":"D","x":0.55,"y":0.40,"w":0.10,"h":0.15},{"t":"face","l":"E","x":0.66,"y":0.40,"w":0.10,"h":0.15},{"t":"face","l":"F","x":0.77,"y":0.40,"w":0.10,"h":0.15}]},"minimal":{"name":"Minimal","controls":[{"t":"btn","l":"Start","x":0.44,"y":0.06,"w":0.09,"h":0.09},{"t":"stick","l":"","x":0.12,"y":0.60,"w":0.20,"h":0.30},{"t":"face","l":"B","x":0.60,"y":0.58,"w":0.13,"h":0.20},{"t":"face","l":"A","x":0.76,"y":0.52,"w":0.13,"h":0.20}]}}
+          EOF
+          echo ok
+      - name: Kotlin source
+        run: |
+          cat > app/src/main/java/ai/padforge/PadForge.kt <<'EOF'
+          package ai.padforge
+          import android.accessibilityservice.AccessibilityService
+          import android.accessibilityservice.GestureDescription
+          import android.app.*
+          import android.content.Context
+          import android.content.Intent
+          import android.graphics.*
+          import android.os.*
+          import android.provider.Settings
+          import android.util.AttributeSet
+          import android.view.MotionEvent
+          import android.view.View
+          import android.view.WindowManager
+          import android.widget.*
+          import org.json.JSONArray
+          import org.json.JSONObject
+          import java.io.BufferedReader
+          import java.io.PrintWriter
+          import java.net.*
+          import java.util.concurrent.LinkedBlockingQueue
+          import kotlin.concurrent.thread
+          import kotlin.math.min
+
+          const val BG = 0xFF080B10.toInt()
+          const val FG = 0xFFE6EDF7.toInt()
+          const val AC = 0xFF3DDC97.toInt()
+
+          class MainActivity : Activity() {
+              override fun onCreate(s: Bundle?) {
+                  super.onCreate(s)
+                  val l = LinearLayout(this)
+                  l.orientation = LinearLayout.VERTICAL
+                  l.gravity = android.view.Gravity.CENTER
+                  l.setPadding(60, 0, 60, 0)
+                  l.setBackgroundColor(BG)
+                  val t = TextView(this)
+                  t.text = "PADFORGE"
+                  t.setTextColor(AC)
+                  t.textSize = 26f
+                  val sub = TextView(this)
+                  sub.text = "Android to Android over Wi-Fi"
+                  sub.setTextColor(0xFF8593A8.toInt())
+                  sub.setPadding(0, 0, 0, 70)
+                  val b1 = Button(this)
+                  b1.text = "Be the RECEIVER"
+                  b1.setOnClickListener { startActivity(Intent(this, HostActivity::class.java)) }
+                  val b2 = Button(this)
+                  b2.text = "Be the CONTROLLER"
+                  b2.setOnClickListener { startActivity(Intent(this, ControllerActivity::class.java)) }
+                  l.addView(t); l.addView(sub); l.addView(b1); l.addView(b2)
+                  setContentView(l)
+              }
+          }
+
+          class HostActivity : Activity() {
+              lateinit var tv: TextView
+              override fun onCreate(s: Bundle?) {
+                  super.onCreate(s)
+                  val l = LinearLayout(this)
+                  l.orientation = LinearLayout.VERTICAL
+                  l.setPadding(50, 50, 50, 50)
+                  l.setBackgroundColor(BG)
+                  val ip = TextView(this)
+                  ip.text = localIp() ?: "no Wi-Fi"
+                  ip.setTextColor(0xFFFFFFFF.toInt())
+                  ip.textSize = 28f
+                  val note = TextView(this)
+                  note.text = "Type this IP on the controller phone"
+                  note.setTextColor(0xFF8593A8.toInt())
+                  tv = TextView(this)
+                  tv.setTextColor(0xFF8593A8.toInt())
+                  tv.setPadding(0, 40, 0, 0)
+                  tv.text = "Server stopped"
+                  val a11y = Button(this)
+                  a11y.text = "Enable touch injection"
+                  a11y.setOnClickListener { startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }
+                  val start = Button(this)
+                  start.text = "Start server"
+                  start.setOnClickListener {
+                      if (InjectService.instance == null) { tv.text = "Enable touch injection first"; return@setOnClickListener }
+                      PadServerService.listener = { tv.text = it }
+                      startForegroundService(Intent(this, PadServerService::class.java))
+                      tv.text = "Server started"
+                  }
+                  l.addView(ip); l.addView(note); l.addView(a11y); l.addView(start); l.addView(tv)
+                  setContentView(l)
+              }
+              fun localIp(): String? = NetworkInterface.getNetworkInterfaces().toList()
+                  .flatMap { it.inetAddresses.toList() }
+                  .firstOrNull { !it.isLoopbackAddress && it is Inet4Address }?.hostAddress
+          }
+
+          class ControllerActivity : Activity() {
+              lateinit var pad: PadView
+              lateinit var tv: TextView
+              var client: Client? = null
+              override fun onCreate(s: Bundle?) {
+                  super.onCreate(s)
+                  window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                  val root = FrameLayout(this)
+                  root.setBackgroundColor(BG)
+                  pad = PadView(this, null)
+                  root.addView(pad, FrameLayout.LayoutParams(-1, -1))
+                  val bar = LinearLayout(this)
+                  bar.orientation = LinearLayout.HORIZONTAL
+                  bar.setBackgroundColor(0xCC0D1219.toInt())
+                  bar.setPadding(20, 10, 20, 10)
+                  tv = TextView(this)
+                  tv.text = "Disconnected"
+                  tv.setTextColor(0xFF8593A8.toInt())
+                  bar.addView(tv, LinearLayout.LayoutParams(0, -2, 1f))
+                  val bL = Button(this); bL.text = "Layout"
+                  val bE = Button(this); bE.text = "Edit"
+                  val bF = Button(this); bF.text = "Hide"
+                  bL.setOnClickListener { pick() }
+                  bE.setOnClickListener { v ->
+                      pad.editing = !pad.editing
+                      (v as Button).text = if (pad.editing) "Done" else "Edit" }
+                  bF.setOnClickListener { bar.visibility = if (bar.visibility == View.VISIBLE) View.GONE else View.VISIBLE }
+                  bar.addView(bL); bar.addView(bE); bar.addView(bF)
+                  root.addView(bar, FrameLayout.LayoutParams(-1, -2))
+                  setContentView(root)
+                  val p = getSharedPreferences("pf", Context.MODE_PRIVATE)
+                  val saved = p.getString("layout", null)
+                  pad.load(if (saved != null) JSONObject(saved) else JSONObject(assets.open("layouts.json").bufferedReader().readText()).getJSONObject("psp"))
+                  pad.onInput = { client?.send(it) }
+                  pad.onEditChanged = { p.edit().putString("layout", pad.serialize().toString()).apply() }
+                  ask()
+              }
+              fun pick() {
+                  val all = JSONObject(assets.open("layouts.json").bufferedReader().readText())
+                  val keys = all.keys().asSequence().toList()
+                  AlertDialog.Builder(this).setTitle("Layout")
+                      .setItems(keys.map { all.getJSONObject(it).getString("name") }.toTypedArray()) { _, i ->
+                          pad.load(all.getJSONObject(keys[i]))
+                          getSharedPreferences("pf", MODE_PRIVATE).edit().putString("layout", pad.serialize().toString()).apply()
+                      }.show()
+              }
+              fun ask() {
+                  val p = getSharedPreferences("pf", Context.MODE_PRIVATE)
+                  val et = EditText(this)
+                  et.hint = "Receiver IP"
+                  et.setText(p.getString("ip", ""))
+                  et.inputType = android.text.InputType.TYPE_CLASS_PHONE
+                  AlertDialog.Builder(this).setTitle("Connect to receiver").setView(et)
+                      .setPositiveButton("Connect") { _, _ ->
+                          val ip = et.text.toString().trim()
+                          if (ip.isEmpty()) return@setPositiveButton
+                          p.edit().putString("ip", ip).apply()
+                          client?.close()
+                          tv.text = "Connecting..."
+                          client = Client(ip, PadServerService.PORT) { m -> runOnUiThread { tv.text = m } }.also { it.start() }
+                      }
+                      .setNeutralButton("Scan") { _, _ ->
+                          tv.text = "Scanning..."
+                          Discovery.findHost { ip -> runOnUiThread { et.setText(ip) } } }
+                      .setNegativeButton("Cancel", null).show()
+              }
+              override fun onDestroy() { client?.close(); super.onDestroy() }
+          }
+
+          class PadView(ctx: Context, a: AttributeSet?) : View(ctx, a) {
+              data class Ctl(val type: String, var label: String, var x: Float, var y: Float, var w: Float, var h: Float)
+              var onInput: ((String) -> Unit)? = null
+              var onEditChanged: (() -> Unit)? = null
+              var editing = false
+              val ctl = ArrayList<Ctl>()
+              val active = HashMap<Int, Ctl>()
+              val p = Paint(Paint.ANTI_ALIAS_FLAG)
+              val f = Paint(Paint.ANTI_ALIAS_FLAG)
+              var dragC: Ctl? = null
+              var ddx = 0f
+              var ddy = 0f
+              fun load(j: JSONObject) {
+                  ctl.clear()
+                  val a = j.getJSONArray("controls")
+                  for (i in 0 until a.length()) {
+                      val o = a.getJSONObject(i)
+                      ctl.add(Ctl(o.getString("t"), o.optString("l"), o.getDouble("x").toFloat(), o.getDouble("y").toFloat(), o.getDouble("w").toFloat(), o.getDouble("h").toFloat()))
+                  }
+                  invalidate()
+              }
+              fun serialize(): JSONObject {
+                  val a = JSONArray()
+                  ctl.forEach { c -> a.put(JSONObject().apply {
+                      put("t", c.type); put("l", c.label)
+                      put("x", c.x.toDouble()); put("y", c.y.toDouble())
+                      put("w", c.w.toDouble()); put("h", c.h.toDouble()) }) }
+                  return JSONObject().put("name", "custom").put("controls", a)
+              }
+              fun rect(c: Ctl) = RectF(c.x * width, c.y * height, (c.x + c.w) * width, (c.y + c.h) * height)
+              fun hit(x: Float, y: Float) = ctl.lastOrNull { rect(it).contains(x, y) }
+              override fun onDraw(c: Canvas) {
+                  ctl.forEach { k ->
+                      val r = rect(k)
+                      val on = active.containsValue(k)
+                      f.style = Paint.Style.FILL
+                      f.color = if (on) 0x803DDC97.toInt() else 0x14FFFFFF
+                      p.style = Paint.Style.STROKE
+                      p.strokeWidth = 2f
+                      p.color = if (on) AC else 0x33FFFFFF
+                      when (k.type) {
+                          "face", "stick" -> { c.drawOval(r, f); c.drawOval(r, p) }
+                          "dpad" -> {
+                              c.drawRect(RectF(r.centerX() - r.width() / 6, r.top, r.centerX() + r.width() / 6, r.bottom), f)
+                              c.drawRect(RectF(r.left, r.centerY() - r.height() / 6, r.right, r.centerY() + r.height() / 6), f)
+                          }
+                          else -> { c.drawRoundRect(r, 18f, 18f, f); c.drawRoundRect(r, 18f, 18f, p) }
+                      }
+                      if (k.label.isNotEmpty()) {
+                          p.style = Paint.Style.FILL
+                          p.color = 0xFFD6E0EE.toInt()
+                          p.textSize = min(r.height() * 0.5f, r.width() * 0.5f).coerceAtLeast(18f)
+                          p.textAlign = Paint.Align.CENTER
+                          c.drawText(k.label, r.centerX(), r.centerY() + p.textSize / 3f, p)
+                      }
+                      if (editing) {
+                          p.style = Paint.Style.STROKE
+                          p.color = 0xFF4D9FFF.toInt()
+                          p.strokeWidth = 3f
+                          c.drawRoundRect(RectF(r.left - 4, r.top - 4, r.right + 4, r.bottom + 4), 20f, 20f, p)
+                      }
+                  }
+              }
+              override fun onTouchEvent(e: MotionEvent): Boolean {
+                  val i = e.actionIndex
+                  val id = e.getPointerId(i)
+                  val x = e.getX(i)
+                  val y = e.getY(i)
+                  if (editing) {
+                      when (e.actionMasked) {
+                          MotionEvent.ACTION_DOWN, MotionEvent.ACTION_POINTER_DOWN -> {
+                              val c = hit(x, y) ?: return true
+                              dragC = c
+                              ddx = x - c.x * width
+                              ddy = y - c.y * height }
+                          MotionEvent.ACTION_MOVE -> {
+                              val c = dragC ?: return true
+                              c.x = ((x - ddx) / width).coerceIn(0f, 1f - c.w)
+                              c.y = ((y - ddy) / height).coerceIn(0f, 1f - c.h)
+                              invalidate(); onEditChanged?.invoke() }
+                          MotionEvent.ACTION_UP, MotionEvent.ACTION_POINTER_UP -> { dragC = null; onEditChanged?.invoke() }
+                      }
+                      return true
+                  }
+                  when (e.actionMasked) {
+                      MotionEvent.ACTION_DOWN, MotionEvent.ACTION_POINTER_DOWN -> {
+                          val c = hit(x, y) ?: return true
+                          active[id] = c
+                          if (c.type == "stick") {
+                              val r = rect(c)
+                              onInput?.invoke("{\"t\":\"down\",\"p\":$id,\"x\":${r.centerX() / width},\"y\":${r.centerY() / height}}")
+                          } else onInput?.invoke("{\"t\":\"down\",\"p\":$id,\"x\":${(x / width).coerceIn(0f, 1f)},\"y\":${(y / height).coerceIn(0f, 1f)}}")
+                          invalidate() }
+                      MotionEvent.ACTION_MOVE -> for (n in 0 until e.pointerCount) {
+                          val pid = e.getPointerId(n)
+                          val c = active[pid] ?: continue
+                          if (c.type != "stick") continue
+                          val r = rect(c)
+                          val rad = min(r.width(), r.height()) / 2f
+                          val dx = ((e.getX(n) - r.centerX()) / rad).coerceIn(-1f, 1f)
+                          val dy = ((e.getY(n) - r.centerY()) / rad).coerceIn(-1f, 1f)
+                          onInput?.invoke("{\"t\":\"move\",\"p\":$pid,\"x\":${r.centerX() / width + dx * rad / width},\"y\":${r.centerY() / height + dy * rad / height}}") }
+                      MotionEvent.ACTION_UP, MotionEvent.ACTION_POINTER_UP -> {
+                          active.remove(id)?.let { onInput?.invoke("{\"t\":\"up\",\"p\":$id}") }
+                          invalidate() }
+                      MotionEvent.ACTION_CANCEL -> { active.clear(); invalidate() }
+                  }
+                  return true
+              }
+          }
+
+          class Client(val host: String, val port: Int, val onState: (String) -> Unit) {
+              val out = LinkedBlockingQueue<String>()
+              @Volatile var sock: Socket? = null
+              fun start() = thread(isDaemon = true) {
+                  try {
+                      val s = Socket()
+                      s.tcpNoDelay = true
+                      s.connect(InetSocketAddress(host, port), 4000)
+                      sock = s
+                      onState("Connected to " + host)
+                      thread(isDaemon = true) {
+                          try { BufferedReader(s.getInputStream().reader()).forEachLine { } } catch (_: Exception) {}
+                          onState("Disconnected") }
+                      val w = PrintWriter(s.getOutputStream().writer(), false)
+                      while (true) {
+                          val line = out.take()
+                          w.println(line); w.flush()
+                          if (line == "__X__") break
+                      }
+                  } catch (e: Exception) { onState("Failed: " + e.message) }
+              }
+              fun send(j: String) { out.offer(j) }
+              fun close() { out.offer("__X__"); try { sock?.close() } catch (_: Exception) {} }
+          }
+
+          object Discovery {
+              const val PORT = 8766
+              fun findHost(cb: (String) -> Unit) = thread(isDaemon = true) {
+                  try {
+                      DatagramSocket().use { s ->
+                          s.broadcast = true
+                          s.soTimeout = 400
+                          val b = "PADFORGE?".toByteArray()
+                          s.send(DatagramPacket(b, b.size, InetAddress.getByName("255.255.255.255"), PORT))
+                          val buf = ByteArray(64)
+                          val end = System.currentTimeMillis() + 1800
+                          while (System.currentTimeMillis() < end) {
+                              try {
+                                  val r = DatagramPacket(buf, buf.size)
+                                  s.receive(r)
+                                  r.address.hostAddress?.let(cb)
+                              } catch (_: SocketTimeoutException) {}
+                          }
+                      }
+                  } catch (_: Exception) {}
+              }
+              fun answerLoop(running: () -> Boolean) = thread(isDaemon = true) {
+                  try {
+                      DatagramSocket(null).use { s ->
+                          s.reuseAddress = true
+                          s.bind(InetSocketAddress(PORT))
+                          val buf = ByteArray(64)
+                          while (running()) {
+                              val r = DatagramPacket(buf, buf.size)
+                              s.soTimeout = 1000
+                              try { s.receive(r) } catch (_: Exception) { continue }
+                              val a = "PADFORGE".toByteArray()
+                              s.send(DatagramPacket(a, a.size, r.address, r.port))
+                          }
+                      }
+                  } catch (_: Exception) {}
+              }
+          }
+
+          class InjectService : AccessibilityService() {
+              companion object { @Volatile var instance: InjectService? = null; private set }
+              val main = Handler(Looper.getMainLooper())
+              val strokes = LinkedHashMap<Int, GestureDescription.StrokeDescription>()
+              var start = 0L
+              override fun onServiceConnected() { super.onServiceConnected(); instance = this }
+              override fun onDestroy() { instance = null; super.onDestroy() }
+              override fun onAccessibilityEvent(e: android.view.accessibility.AccessibilityEvent?) {}
+              override fun onInterrupt() {}
+              fun pt(x: Float, y: Float): Path = Path().apply { moveTo(x, y) }
+              fun down(id: Int, x: Float, y: Float) {
+                  if (strokes.isEmpty()) start = SystemClock.uptimeMillis()
+                  strokes[id] = GestureDescription.StrokeDescription(pt(x, y), 0, 30000, true)
+                  fire()
+              }
+              fun move(id: Int, x: Float, y: Float) {
+                  val old = strokes[id] ?: return down(id, x, y)
+                  strokes[id] = old.continueStroke(pt(x, y), SystemClock.uptimeMillis() - start, 30000, true)
+                  fire()
+              }
+              fun up(id: Int) {
+                  if (!strokes.containsKey(id)) return
+                  strokes.remove(id)
+                  if (strokes.isEmpty()) { cancelGesture(); return }
+                  cancelGesture()
+                  start = SystemClock.uptimeMillis()
+                  strokes.keys.toList().forEach { strokes[it] = GestureDescription.StrokeDescription(pt(0f, 0f), 0, 30000, true) }
+                  fire()
+              }
+              fun fire() = main.post {
+                  if (strokes.isEmpty()) return@post
+                  val b = GestureDescription.Builder()
+                  strokes.values.forEach { b.addStroke(it) }
+                  try { dispatchGesture(b.build(), null, null) } catch (_: Exception) {}
+              }
+          }
+
+          class PadServerService : Service() {
+              companion object { const val PORT = 8765; @Volatile var running = false; var listener: ((String) -> Unit)? = null }
+              override fun onBind(i: Intent?): IBinder? = null
+              override fun onCreate() {
+                  super.onCreate()
+                  getSystemService(NotificationManager::class.java).createNotificationChannel(
+                      NotificationChannel("pad", "server", NotificationManager.IMPORTANCE_LOW))
+                  startForeground(1, Notification.Builder(this, "pad")
+                      .setContentTitle("PadForge receiver running")
+                      .setSmallIcon(android.R.drawable.stat_sys_data_bluetooth).build())
+              }
+              override fun onStartCommand(i: Intent?, fl: Int, st: Int): Int {
+                  if (!running) { running = true; serve() }
+                  return START_STICKY
+              }
+              fun serve() {
+                  Discovery.answerLoop { running }
+                  thread(isDaemon = true) {
+                      try {
+                          ServerSocket(PORT).use { ss ->
+                              listener?.invoke("Listening")
+                              while (running) {
+                                  val c = ss.accept()
+                                  thread(isDaemon = true) {
+                                      listener?.invoke("Controller connected")
+                                      BufferedReader(c.getInputStream().reader()).forEachLine { handle(it) }
+                                      listener?.invoke("Controller left")
+                                      c.close() }
+                              }
+                          }
+                      } catch (e: Exception) { listener?.invoke("Error: " + e.message) }
+                  }
+              }
+              fun handle(line: String) {
+                  val s = InjectService.instance ?: return
+                  try {
+                      val o = JSONObject(line)
+                      val id = o.optInt("p")
+                      when (o.optString("t")) {
+                          "down" -> s.down(id, px(o.getDouble("x")), py(o.getDouble("y")))
+                          "move" -> s.move(id, px(o.getDouble("x")), py(o.getDouble("y")))
+                          "up" -> s.up(id)
+                      }
+                  } catch (_: Exception) {}
+              }
+              fun px(v: Double) = (v * resources.displayMetrics.widthPixels).toFloat()
+              fun py(v: Double) = (v * resources.displayMetrics.heightPixels).toFloat()
+              override fun onDestroy() { running = false; super.onDestroy() }
+          }
+          EOF
+          echo ok
+      - name: Build
+        run: gradle assembleDebug --no-daemon
+      - uses: actions/upload-artifact@v4
+        with:
+          name: padforge-apk
+          path: app/build/outputs/apk/debug/app-debug.apk
